@@ -455,8 +455,6 @@ class ModelCheckpoint(Callback):
             else:
                 self.monitor_op = np.less
 
-        self.best = np.Inf
-
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
         self.epochs_since_last_save += 1
