@@ -3,8 +3,13 @@ from collections import OrderedDict
 from torch.optim import Optimizer
 from torch.nn import Module
 from typing import Dict, List, Callable, Union
+import matplotlib.pyplot as plt
 
+
+import numpy as np
 from few_shot.core import create_nshot_task_label
+
+
 
 
 def replace_grad(parameter_gradients, parameter_name):
@@ -54,11 +59,20 @@ def meta_gradient_step(model: Module,
     task_gradients = []
     task_losses = []
     task_predictions = []
+    #for meta_batch in x:
+    running_loss=[]
     for meta_batch in x:
         # By construction x is a 5D tensor of shape: (meta_batch_size, n*k + q*k, channels, width, height)
         # Hence when we iterate over the first  dimension we are iterating through the meta batches
+        
         x_task_train = meta_batch[:n_shot * k_way]
+        
+
         x_task_val = meta_batch[n_shot * k_way:]
+        
+        
+        
+
 
         # Create a fast model using the current meta model weights
         fast_weights = OrderedDict(model.named_parameters())
@@ -66,8 +80,9 @@ def meta_gradient_step(model: Module,
         # Train the model for `inner_train_steps` iterations
         for inner_batch in range(inner_train_steps):
             # Perform update of model weights
-            y = create_nshot_task_label(k_way, n_shot).to(device)
+            y = create_nshot_task_label(k_way, n_shot).cuda()
             logits = model.functional_forward(x_task_train, fast_weights)
+            
             loss = loss_fn(logits, y)
             gradients = torch.autograd.grad(loss, fast_weights.values(), create_graph=create_graph)
 
@@ -78,9 +93,10 @@ def meta_gradient_step(model: Module,
             )
 
         # Do a pass of the model on the validation data from the current task
-        y = create_nshot_task_label(k_way, q_queries).to(device)
+        y = create_nshot_task_label(k_way, q_queries).cuda()
         logits = model.functional_forward(x_task_val, fast_weights)
-        loss = loss_fn(logits, y)
+        
+        loss =  loss_fn(logits, y)
         loss.backward(retain_graph=True)
 
         # Get post-update accuracies
@@ -89,10 +105,14 @@ def meta_gradient_step(model: Module,
 
         # Accumulate losses and gradients
         task_losses.append(loss)
+        
+
+        #writer.add_scalar('training loss',running_loss)"
+
         gradients = torch.autograd.grad(loss, fast_weights.values(), create_graph=create_graph)
         named_grads = {name: g for ((name, _), g) in zip(fast_weights.items(), gradients)}
         task_gradients.append(named_grads)
-
+        
     if order == 1:
         if train:
             sum_task_gradients = {k: torch.stack([grad[k] for grad in task_gradients]).mean(dim=0)
@@ -108,7 +128,7 @@ def meta_gradient_step(model: Module,
             # Dummy pass in order to create `loss` variable
             # Replace dummy gradients with mean task gradients using hooks
             logits = model(torch.zeros((k_way, ) + data_shape).to(device, dtype=torch.double))
-            loss = loss_fn(logits, create_nshot_task_label(k_way, 1).to(device))
+            loss = loss_fn(logits, create_nshot_task_label(k_way, 1).cuda())
             loss.backward()
             optimiser.step()
 

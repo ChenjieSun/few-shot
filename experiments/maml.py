@@ -1,3 +1,5 @@
+
+
 """
 Reproduce Model-agnostic Meta-learning results (supervised only) of Finn et al
 """
@@ -5,7 +7,8 @@ from torch.utils.data import DataLoader
 from torch import nn
 import argparse
 
-from few_shot.datasets import OmniglotDataset, MiniImageNet
+
+from few_shot.datasets import OmniglotDataset, MiniImageNet,CIFARFS
 from few_shot.core import NShotTaskSampler, create_nshot_task_label, EvaluateFewShot
 from few_shot.maml import meta_gradient_step
 from few_shot.models import FewShotClassifier
@@ -35,7 +38,7 @@ parser.add_argument('--inner-lr', default=0.4, type=float)
 parser.add_argument('--meta-lr', default=0.001, type=float)
 parser.add_argument('--meta-batch-size', default=32, type=int)
 parser.add_argument('--order', default=1, type=int)
-parser.add_argument('--epochs', default=50, type=int)
+parser.add_argument('--epochs', default=80, type=int)
 parser.add_argument('--epoch-len', default=100, type=int)
 parser.add_argument('--eval-batches', default=20, type=int)
 
@@ -48,6 +51,10 @@ if args.dataset == 'omniglot':
 elif args.dataset == 'miniImageNet':
     dataset_class = MiniImageNet
     fc_layer_size = 1600
+    num_input_channels = 3
+elif args.dataset == 'CIFARFS':
+    dataset_class = CIFARFS
+    fc_layer_size = 256
     num_input_channels = 3
 else:
     raise(ValueError('Unsupported dataset'))
@@ -65,14 +72,17 @@ background_taskloader = DataLoader(
     background,
     batch_sampler=NShotTaskSampler(background, args.epoch_len, n=args.n, k=args.k, q=args.q,
                                    num_tasks=args.meta_batch_size),
-    num_workers=8
+    num_workers=8,
+    pin_memory=True
+
 )
 evaluation = dataset_class('evaluation')
 evaluation_taskloader = DataLoader(
     evaluation,
     batch_sampler=NShotTaskSampler(evaluation, args.eval_batches, n=args.n, k=args.k, q=args.q,
                                    num_tasks=args.meta_batch_size),
-    num_workers=8
+    num_workers=8,
+    pin_memory=True
 )
 
 
@@ -95,7 +105,7 @@ def prepare_meta_batch(n, k, q, meta_batch_size):
         # Move to device
         x = x.double().to(device)
         # Create label
-        y = create_nshot_task_label(k, q).cuda().repeat(meta_batch_size)
+        y = create_nshot_task_label(k, q).to(device).repeat(meta_batch_size)
         return x, y
 
     return prepare_meta_batch_
